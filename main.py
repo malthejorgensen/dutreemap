@@ -243,7 +243,7 @@ def squarify(items: list[dict], x: float, y: float, w: float, h: float):
 class DiskTreemap(tk.Tk):
     _PAD = 2  # gap between cells (px)
 
-    def __init__(self, root_dir: str, no_cache: bool = False):
+    def __init__(self, root_dir: Optional[str], no_cache: bool = False):
         super().__init__()
         self.title("Disk Treemap")
         self.geometry("1200x750")
@@ -262,6 +262,8 @@ class DiskTreemap(tk.Tk):
         self._focus_idx: Optional[int] = None
         self._q: queue.Queue = queue.Queue()
         self._progress: list[int] = [0]
+
+        root_dir = root_dir or str(Path.home())
 
         self._build_ui()
         self.after(50, lambda: self._start_scan(root_dir))
@@ -565,9 +567,7 @@ class DiskTreemap(tk.Tk):
 
 if __name__ == "__main__":
     ap = argparse.ArgumentParser(description="Disk usage treemap")
-    ap.add_argument(
-        "path", default=str(Path.home()), help="Directory to scan (default: home)"
-    )
+    ap.add_argument("path", nargs="?", help="Directory to scan (default: home)")
     ap.add_argument(
         "--no-cache", action="store_true", help="Ignore existing cache and overwrite it"
     )

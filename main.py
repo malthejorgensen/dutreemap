@@ -349,14 +349,10 @@ class DiskTreemap(tk.Tk):
 
         # Try cache first (unless --no-cache)
         if not self._no_cache:
-            cached = load_cache(path)
-            if cached is not None:
-                items, scanned_at = cached
-                age = _fmt_age(scanned_at)
-                self._items = items
-                self._lbl_status.config(text=f"  Loaded from cache (scanned {age})")
-                self._redraw()
-                return
+            self._lbl_loading.config(text="Loading from cache… (pass --no-cache to disable)")
+            self._show_loading(True)
+            self.after(100, lambda: self._load_from_cache(path))
+            return
 
         self._progress = [0]
         self._show_loading(True)
@@ -366,6 +362,27 @@ class DiskTreemap(tk.Tk):
             save_cache(path, items)
             self._q.put(("done", items))
 
+        threading.Thread(target=_worker, daemon=True).start()
+        self._poll_queue()
+
+    def _load_from_cache(self, path: str) -> None:
+        cached = load_cache(path)
+        self._show_loading(False)
+        self._lbl_loading.config(text="Scanning…")
+        if cached is not None:
+            items, scanned_at = cached
+            age = _fmt_age(scanned_at)
+            self._items = items
+            self._lbl_status.config(text=f"  Loaded from cache (scanned {age})")
+            self._redraw()
+            return
+        # Cache miss — fall through to a real scan
+        self._progress = [0]
+        self._show_loading(True)
+        def _worker() -> None:
+            items = _scan(path, self._progress)
+            save_cache(path, items)
+            self._q.put(("done", items))
         threading.Thread(target=_worker, daemon=True).start()
         self._poll_queue()
 

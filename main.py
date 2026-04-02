@@ -108,6 +108,8 @@ def _worst_ratio(areas: list[float], side: float) -> float:
     if s == 0:
         return float("inf")
     mx, mn = max(areas), min(areas)
+    if mn == 0:
+        return float("inf")
     return max(side * side * mx / (s * s), s * s / (side * side * mn))
 
 
@@ -138,7 +140,7 @@ def squarify(items: list[dict], x: float, y: float, w: float, h: float):
     if not total:
         return
     area = w * h
-    normed = [(it, it["size"] / total * area) for it in items]
+    normed = [(it, it["size"] / total * area) for it in items if it["size"] > 0]
     normed.sort(key=lambda t: t[1], reverse=True)
 
     row: list[tuple] = []

@@ -12,7 +12,7 @@ Prior art
 ---------
 In general, there's a lot :)
 
-I took my inspiration from [Disk Inventoty X] ([gitlab repo]), which I've been
+I took my inspiration from [Disk Inventory X] ([gitlab repo]), which I've been
 a fan of (and used) for many years but it's no longer installable using [Homebrew]
 so I decided to just have Claude code up something for me.
 

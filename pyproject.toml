@@ -1,7 +1,7 @@
 [project]
-name = "disktreemap"
+name = "dutreemap"
 version = "0.1.0"
-description = "Add your description here"
+description = "Mini app that shows your disk use in a \"tree map\" which is a good visualization of what takes up space on your disk.""
 readme = "README.md"
 requires-python = ">=3.14"
 dependencies = []

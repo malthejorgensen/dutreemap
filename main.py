@@ -21,6 +21,8 @@ from tkinter import filedialog
 
 sys.setrecursionlimit(10_000)
 
+APP_NAME = "dutreemap"
+
 # ── Palette ───────────────────────────────────────────────────────────────────
 
 _COLORS = [
@@ -82,7 +84,7 @@ def open_in_files(path: str) -> None:
 def _cache_dir() -> Path:
     xdg = os.environ.get("XDG_CACHE_HOME")
     base = Path(xdg) if xdg else Path.home() / ".cache"
-    d = base / "disktreemap"
+    d = base / APP_NAME
     d.mkdir(parents=True, exist_ok=True)
     return d
 

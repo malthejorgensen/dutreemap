@@ -16,8 +16,7 @@ I took my inspiration from [Disk Inventory X] ([gitlab repo]), which I've been
 a fan of (and used) for many years but it's no longer installable using [Homebrew]
 so I decided to just have Claude code up something for me.
 
-For Python specifically there's [python-du] which looks pretty cool. Found it
-after I implemented this version.
+For Python specifically there's [python-du] which looks pretty cool.
 
 [Disk Inventory X]: https://www.derlien.com/
 [gitlab repo]: https://gitlab.com/tderlien/disk-inventory-x

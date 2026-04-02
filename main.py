@@ -1,6 +1,6 @@
 #!/usr/bin/env -S uv run
 # /// script
-# requires-python = ">=3.10"
+# requires-python = ">=3.9"
 # dependencies = []
 # ///
 
@@ -18,6 +18,7 @@ import threading
 import tkinter as tk
 from pathlib import Path
 from tkinter import filedialog
+from typing import Optional
 
 sys.setrecursionlimit(10_000)
 
@@ -94,7 +95,7 @@ def _cache_file(path: str) -> Path:
     return _cache_dir() / f"{key}.json"
 
 
-def load_cache(path: str) -> tuple[list, datetime.datetime] | None:
+def load_cache(path: str) -> Optional[tuple[list, datetime.datetime]]:
     """Return (items, scanned_at) from cache, or None if not cached."""
     f = _cache_file(path)
     if not f.exists():
@@ -126,12 +127,12 @@ def save_cache(path: str, items: list) -> None:
 # ── Filesystem scan ───────────────────────────────────────────────────────────
 
 
-def _scan(path: str, counter: list[int] | None = None) -> list[dict]:
+def _scan(path: str, counter: Optional[list[int]] = None) -> list[dict]:
     """Recursively build a tree of {name, path, size, is_dir, children} dicts."""
     items: list[dict] = []
     try:
         entries = list(os.scandir(path))
-    except PermissionError, OSError:
+    except (PermissionError, OSError):
         return items
     for e in entries:
         try:
@@ -158,7 +159,7 @@ def _scan(path: str, counter: list[int] | None = None) -> list[dict]:
                 )
                 if counter is not None:
                     counter[0] += 1
-        except OSError, PermissionError:
+        except (OSError, PermissionError):
             pass
     items.sort(key=lambda x: x["size"], reverse=True)
     return items
@@ -252,11 +253,13 @@ class DiskTreemap(tk.Tk):
         self._no_cache = no_cache
 
         # Navigation stack: list of (path_label, items, focus_idx)
-        self._stack: list[tuple[str, list, int | None]] = []
+        self._stack: list[tuple[str, list, Optional[int]]] = []
         self._items: list[dict] = []
         # Rendered cells: (item, rect_id, text_id, ix, iy, iw, ih)
-        self._cells: list[tuple[dict, int, int | None, float, float, float, float]] = []
-        self._focus_idx: int | None = None
+        self._cells: list[
+            tuple[dict, int, Optional[int], float, float, float, float]
+        ] = []
+        self._focus_idx: Optional[int] = None
         self._q: queue.Queue = queue.Queue()
         self._progress: list[int] = [0]
 
@@ -442,7 +445,7 @@ class DiskTreemap(tk.Tk):
 
     # ── Events ────────────────────────────────────────────────────────────────
 
-    def _cell_at(self, event: tk.Event) -> dict | None:
+    def _cell_at(self, event: tk.Event) -> Optional[dict]:
         hits = self._canvas.find_overlapping(event.x, event.y, event.x, event.y)
         if not hits:
             return None
@@ -530,7 +533,7 @@ class DiskTreemap(tk.Tk):
         cur_my = cy + ch / 2
         direction = event.keysym  # "Left", "Right", "Up", "Down"
 
-        best_idx: int | None = None
+        best_idx: Optional[int] = None
         best_score = float("inf")
         for i, (_, _, _, ix, iy, iw, ih) in enumerate(self._cells):
             if i == self._focus_idx:

@@ -330,6 +330,13 @@ class DiskTreemap(tk.Tk):
         self._lbl_loading = tk.Label(
             self, text="Scanning…", bg=_BG, fg=_LOADING_FG, font=("Courier", 20)
         )
+        self._lbl_shortcuts = tk.Label(
+            self,
+            text="arrows: navigate  |  ⌘↓ / Return: drill in  |  ⌘↑: go up  |  double-click: open in Finder",
+            bg=_BG,
+            fg=_MUTED,
+            font=("Courier", 14),
+        )
 
     # ── Scan ──────────────────────────────────────────────────────────────────
 
@@ -386,9 +393,11 @@ class DiskTreemap(tk.Tk):
 
     def _show_loading(self, show: bool) -> None:
         if show:
-            self._lbl_loading.place(relx=0.5, rely=0.5, anchor=tk.CENTER)
+            self._lbl_loading.place(relx=0.5, rely=0.5, anchor=tk.S)
+            self._lbl_shortcuts.place(relx=0.5, rely=0.5, anchor=tk.N, y=10)
         else:
             self._lbl_loading.place_forget()
+            self._lbl_shortcuts.place_forget()
 
     # ── Draw ──────────────────────────────────────────────────────────────────
 

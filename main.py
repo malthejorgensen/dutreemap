@@ -590,8 +590,7 @@ class DiskTreemap(tk.Tk):
             self._stack.clear()
             self._start_scan(d)
 
-
-if __name__ == "__main__":
+def main():
     ap = argparse.ArgumentParser(description="Disk usage treemap")
     ap.add_argument("path", nargs="?", help="Directory to scan (default: home)")
     ap.add_argument(
@@ -599,3 +598,7 @@ if __name__ == "__main__":
     )
     args = ap.parse_args()
     DiskTreemap(root_dir=args.path, no_cache=args.no_cache).mainloop()
+
+
+if __name__ == "__main__":
+    main()

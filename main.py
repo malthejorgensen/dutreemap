@@ -124,7 +124,7 @@ def save_cache(path: str, items: list) -> None:
 # ── Filesystem scan ───────────────────────────────────────────────────────────
 
 
-def _scan(path: str) -> list[dict]:
+def _scan(path: str, counter: list[int] | None = None) -> list[dict]:
     """Recursively build a tree of {name, path, size, is_dir, children} dicts."""
     items: list[dict] = []
     try:
@@ -140,8 +140,10 @@ def _scan(path: str) -> list[dict]:
                 items.append(
                     dict(name=e.name, path=e.path, size=sz, is_dir=False, children=[])
                 )
+                if counter is not None:
+                    counter[0] += 1
             elif e.is_dir(follow_symlinks=False):
-                children = _scan(e.path)
+                children = _scan(e.path, counter)
                 sz = sum(c["size"] for c in children)
                 items.append(
                     dict(
@@ -152,6 +154,8 @@ def _scan(path: str) -> list[dict]:
                         children=children,
                     )
                 )
+                if counter is not None:
+                    counter[0] += 1
         except OSError, PermissionError:
             pass
     items.sort(key=lambda x: x["size"], reverse=True)
@@ -252,6 +256,7 @@ class DiskTreemap(tk.Tk):
         self._cells: list[tuple[dict, int, int | None, float, float, float, float]] = []
         self._focus_idx: int | None = None
         self._q: queue.Queue = queue.Queue()
+        self._progress: list[int] = [0]
 
         self._build_ui()
         root = start or str(Path.home())
@@ -340,10 +345,11 @@ class DiskTreemap(tk.Tk):
                 self._redraw()
                 return
 
+        self._progress = [0]
         self._show_loading(True)
 
         def _worker() -> None:
-            items = _scan(path)
+            items = _scan(path, self._progress)
             save_cache(path, items)
             self._q.put(("done", items))
 
@@ -354,6 +360,7 @@ class DiskTreemap(tk.Tk):
         try:
             _, items = self._q.get_nowait()
         except queue.Empty:
+            self._lbl_loading.config(text=f"Scanning…  {self._progress[0]:,} items")
             self.after(100, self._poll_queue)
             return
         self._show_loading(False)

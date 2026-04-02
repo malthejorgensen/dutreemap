@@ -182,11 +182,12 @@ class DiskTreemap(tk.Tk):
         self.configure(bg=_BG)
         self.minsize(400, 300)
 
-        # Navigation stack: list of (path_label, items)
-        self._stack: list[tuple[str, list]] = []
+        # Navigation stack: list of (path_label, items, focus_idx)
+        self._stack: list[tuple[str, list, int | None]] = []
         self._items: list[dict] = []
-        # Rendered cells: (item, rect_canvas_id, text_canvas_id_or_None)
-        self._cells: list[tuple[dict, int, int | None]] = []
+        # Rendered cells: (item, rect_id, text_id, ix, iy, iw, ih)
+        self._cells: list[tuple[dict, int, int | None, float, float, float, float]] = []
+        self._focus_idx: int | None = None
         self._q: queue.Queue = queue.Queue()
 
         self._build_ui()
@@ -233,6 +234,15 @@ class DiskTreemap(tk.Tk):
         self._canvas.bind("<Leave>", self._on_leave)
         self._canvas.bind("<Button-1>", self._on_click)
         self._canvas.bind("<Double-Button-1>", self._on_double_click)
+
+        # ── Keyboard navigation ────────────────────────────────────────────────
+        for key in ("<Left>", "<Right>", "<Up>", "<Down>"):
+            self.bind(key, self._on_arrow)
+        # Cmd+Down / Return → drill in; Cmd+Up → go up
+        for key in ("<Command-Down>", "<Meta-Down>", "<Return>"):
+            self.bind(key, lambda _e: self._on_key_enter())
+        for key in ("<Command-Up>", "<Meta-Up>"):
+            self.bind(key, lambda _e: self._go_up())
 
         # ── Status bar ────────────────────────────────────────────────────────
         sb = tk.Frame(self, bg=_BG, pady=4)
@@ -332,7 +342,17 @@ class DiskTreemap(tk.Tk):
                     width=iw - 6,
                     anchor=tk.CENTER,
                 )
-            self._cells.append((item, rid, tid))
+            self._cells.append((item, rid, tid, ix, iy, iw, ih))
+
+        # Restore or initialise focus (canvas was just rebuilt so no old highlight exists)
+        if self._cells:
+            idx = (
+                self._focus_idx
+                if (self._focus_idx is not None and self._focus_idx < len(self._cells))
+                else 0
+            )
+            self._focus_idx = None  # prevent _set_focus from trying to clear a stale id
+            self._set_focus(idx)
 
     # ── Events ────────────────────────────────────────────────────────────────
 
@@ -341,7 +361,7 @@ class DiskTreemap(tk.Tk):
         if not hits:
             return None
         top = hits[-1]
-        for item, rid, tid in self._cells:
+        for item, rid, tid, *_ in self._cells:
             if rid == top or (tid is not None and tid == top):
                 return item
         return None
@@ -362,25 +382,90 @@ class DiskTreemap(tk.Tk):
     def _on_leave(self, _event: tk.Event) -> None:
         self._lbl_status.config(text="")
 
+    def _drill_into(self, item: dict) -> None:
+        """Navigate into a directory item."""
+        if not (item["is_dir"] and item["children"]):
+            return
+        self._stack.append((self._lbl_path.cget("text"), self._items, self._focus_idx))
+        self._lbl_path.config(text=item["path"])
+        self._items = item["children"]
+        self._focus_idx = 0
+        self._redraw()
+
     def _on_click(self, event: tk.Event) -> None:
         item = self._cell_at(event)
-        if item and item["is_dir"] and item["children"]:
-            self._stack.append((self._lbl_path.cget("text"), self._items))
-            self._lbl_path.config(text=item["path"])
-            self._items = item["children"]
-            self._redraw()
+        if item:
+            self._drill_into(item)
 
     def _on_double_click(self, event: tk.Event) -> None:
         item = self._cell_at(event)
         if item:
             open_in_files(item["path"])
 
+    def _on_key_enter(self) -> None:
+        if self._focus_idx is not None and self._focus_idx < len(self._cells):
+            self._drill_into(self._cells[self._focus_idx][0])
+
     def _go_up(self) -> None:
         if self._stack:
-            path, items = self._stack.pop()
+            path, items, saved_focus = self._stack.pop()
             self._lbl_path.config(text=path)
             self._items = items
+            self._focus_idx = saved_focus
             self._redraw()
+
+    def _set_focus(self, idx: int) -> None:
+        """Move keyboard focus to cell at idx, updating highlight and status bar."""
+        # Clear old highlight
+        if self._focus_idx is not None and self._focus_idx < len(self._cells):
+            old_rid = self._cells[self._focus_idx][1]
+            self._canvas.itemconfig(old_rid, outline=_BG, width=1)
+        self._focus_idx = idx
+        _, rid, _, ix, iy, iw, ih = self._cells[idx]
+        self._canvas.itemconfig(rid, outline="white", width=2)
+        # Scroll the canvas so the cell is visible (no-op if already visible)
+        self._canvas.update_idletasks()
+        # Update status bar
+        item = self._cells[idx][0]
+        icon = "▶ " if item["is_dir"] else "  "
+        hint = "  (⌘↓ / Return to open)" if item["is_dir"] and item["children"] else ""
+        self._lbl_status.config(
+            text=f"{icon}{item['path']}  —  {fmt_bytes(item['size'])}{hint}"
+        )
+
+    def _on_arrow(self, event: tk.Event) -> None:
+        if not self._cells:
+            return
+        if self._focus_idx is None:
+            self._set_focus(0)
+            return
+        _, _, _, cx, cy, cw, ch = self._cells[self._focus_idx]
+        cur_mx = cx + cw / 2
+        cur_my = cy + ch / 2
+        direction = event.keysym  # "Left", "Right", "Up", "Down"
+
+        best_idx: int | None = None
+        best_score = float("inf")
+        for i, (_, _, _, ix, iy, iw, ih) in enumerate(self._cells):
+            if i == self._focus_idx:
+                continue
+            mx = ix + iw / 2
+            my = iy + ih / 2
+            if direction == "Right" and mx > cur_mx:
+                score = (mx - cur_mx) + abs(my - cur_my) * 2
+            elif direction == "Left" and mx < cur_mx:
+                score = (cur_mx - mx) + abs(my - cur_my) * 2
+            elif direction == "Down" and my > cur_my:
+                score = (my - cur_my) + abs(mx - cur_mx) * 2
+            elif direction == "Up" and my < cur_my:
+                score = (cur_my - my) + abs(mx - cur_mx) * 2
+            else:
+                continue
+            if score < best_score:
+                best_score = score
+                best_idx = i
+        if best_idx is not None:
+            self._set_focus(best_idx)
 
     def _open_dir(self) -> None:
         d = filedialog.askdirectory(title="Select directory to scan")

@@ -6,6 +6,10 @@
 
 """Disk usage treemap — Python stdlib only (Tkinter)."""
 
+import argparse
+import datetime
+import hashlib
+import json
 import os
 import queue
 import subprocess
@@ -42,6 +46,18 @@ _LOADING_FG = "#cba6f7"
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
 
+def _fmt_age(dt: datetime.datetime) -> str:
+    delta = datetime.datetime.now() - dt
+    s = int(delta.total_seconds())
+    if s < 60:
+        return "just now"
+    if s < 3600:
+        return f"{s // 60}m ago"
+    if s < 86400:
+        return f"{s // 3600}h ago"
+    return f"{s // 86400}d ago"
+
+
 def fmt_bytes(n: int) -> str:
     for unit in ("B", "KB", "MB", "GB", "TB"):
         if n < 1024:
@@ -58,6 +74,51 @@ def open_in_files(path: str) -> None:
         subprocess.run(["xdg-open", os.path.dirname(path)], check=False)
     else:
         subprocess.run(["explorer", "/select,", path], check=False)
+
+
+# ── Cache ─────────────────────────────────────────────────────────────────────
+
+
+def _cache_dir() -> Path:
+    xdg = os.environ.get("XDG_CACHE_HOME")
+    base = Path(xdg) if xdg else Path.home() / ".cache"
+    d = base / "disktreemap"
+    d.mkdir(parents=True, exist_ok=True)
+    return d
+
+
+def _cache_file(path: str) -> Path:
+    key = hashlib.sha256(path.encode()).hexdigest()
+    return _cache_dir() / f"{key}.json"
+
+
+def load_cache(path: str) -> tuple[list, datetime.datetime] | None:
+    """Return (items, scanned_at) from cache, or None if not cached."""
+    f = _cache_file(path)
+    if not f.exists():
+        return None
+    try:
+        data = json.loads(f.read_text())
+        scanned_at = datetime.datetime.fromisoformat(data["scanned_at"])
+        return data["items"], scanned_at
+    except Exception:
+        return None
+
+
+def save_cache(path: str, items: list) -> None:
+    f = _cache_file(path)
+    try:
+        f.write_text(
+            json.dumps(
+                {
+                    "scanned_at": datetime.datetime.now().isoformat(),
+                    "path": path,
+                    "items": items,
+                }
+            )
+        )
+    except Exception:
+        pass
 
 
 # ── Filesystem scan ───────────────────────────────────────────────────────────
@@ -175,12 +236,14 @@ def squarify(items: list[dict], x: float, y: float, w: float, h: float):
 class DiskTreemap(tk.Tk):
     _PAD = 2  # gap between cells (px)
 
-    def __init__(self, start: str | None = None):
+    def __init__(self, start: str | None = None, no_cache: bool = False):
         super().__init__()
         self.title("Disk Treemap")
         self.geometry("1200x750")
         self.configure(bg=_BG)
         self.minsize(400, 300)
+
+        self._no_cache = no_cache
 
         # Navigation stack: list of (path_label, items, focus_idx)
         self._stack: list[tuple[str, list, int | None]] = []
@@ -260,13 +323,28 @@ class DiskTreemap(tk.Tk):
     # ── Scan ──────────────────────────────────────────────────────────────────
 
     def _start_scan(self, path: str) -> None:
+        path = str(Path(path).resolve())
         self._lbl_path.config(text=path)
-        self._show_loading(True)
         self._canvas.delete("all")
         self._cells = []
+        self._focus_idx = None
+
+        # Try cache first (unless --no-cache)
+        if not self._no_cache:
+            cached = load_cache(path)
+            if cached is not None:
+                items, scanned_at = cached
+                age = _fmt_age(scanned_at)
+                self._items = items
+                self._lbl_status.config(text=f"  Loaded from cache (scanned {age})")
+                self._redraw()
+                return
+
+        self._show_loading(True)
 
         def _worker() -> None:
             items = _scan(path)
+            save_cache(path, items)
             self._q.put(("done", items))
 
         threading.Thread(target=_worker, daemon=True).start()
@@ -475,5 +553,10 @@ class DiskTreemap(tk.Tk):
 
 
 if __name__ == "__main__":
-    start_path = sys.argv[1] if len(sys.argv) > 1 else None
-    DiskTreemap(start=start_path).mainloop()
+    ap = argparse.ArgumentParser(description="Disk usage treemap")
+    ap.add_argument("path", nargs="?", help="Directory to scan (default: home)")
+    ap.add_argument(
+        "--no-cache", action="store_true", help="Ignore existing cache and overwrite it"
+    )
+    args = ap.parse_args()
+    DiskTreemap(start=args.path, no_cache=args.no_cache).mainloop()
